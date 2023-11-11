@@ -1,7 +1,7 @@
 import torch
 from torch import nn
-from llm.config import Config
 from torch.nn import functional as F
+
 
 class RMSNorm(nn.Module):
     """
@@ -9,18 +9,18 @@ class RMSNorm(nn.Module):
 
     output = input / rms(input) * weight
     """
-    def __init__(self, config: Config):
+    def __init__(self, ndim):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(config.hidden_size))
-        self.variance_epsilon = config.norm_eps
+        self.weight = nn.Parameter(torch.ones(ndim))
+        self.variance_epsilon = 1e-6
 
-    def forward(self, hidden_states):
-        input_dtype = hidden_states.dtype
-        hidden_states = hidden_states.to(torch.float32)
+    def forward(self, input: torch.Tensor):
+        input_dtype = input.dtype
+        hidden_states = input.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
-    
+
 
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
