@@ -18,33 +18,16 @@ from torch.nn import functional as F
 from llm.attention import CausalSelfAttention
 from llm.config import GPTConfig
 from llm.norm import LayerNorm, RMSNorm
-
-
-class MLP(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        self.dropout = nn.Dropout(config.dropout)
-
-    def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
-        x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
+from llm.mlp import MLP
 
 
 class Block(nn.Module):
     def __init__(self, config):
         super().__init__()
         if config.rms_norm:
-            print("Use RMSNorm")
             self.ln_1 = RMSNorm(config.n_embd)
             self.ln_2 = RMSNorm(config.n_embd)
         else:
-            print("Use LayerNorm")
             self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
             self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
 
@@ -289,7 +272,7 @@ class GPT(nn.Module):
             idx_cond = (
                 idx
                 if idx.size(1) <= self.config.block_size
-                else idx[:, -self.config.block_size:]
+                else idx[:, -self.config.block_size :]
             )
             # forward the model to get the logits for the index in the sequence
             logits, _ = self(idx_cond)
