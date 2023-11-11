@@ -1,4 +1,4 @@
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 
 class SiLUActivation(nn.Module):
@@ -9,6 +9,7 @@ class SiLUActivation(nn.Module):
     Activation Function (Ramachandran et al., https://arxiv.org/abs/1710.05941v1) where the SiLU was experimented with
     later.
     """
+
     def forward(self, input: Tensor) -> Tensor:
         return nn.functional.silu(input)
 
@@ -21,6 +22,7 @@ class GLU(nn.Module):
 
     FFN(x, W, V, W_2) = (Activation(xW) * xV) * W_2
     """
+
     def __init__(
         self,
         hidden_size: int,
@@ -36,14 +38,12 @@ class GLU(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
-
 class MLP(nn.Module):
-
     def __init__(self, config):
         super().__init__()
-        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu    = nn.GELU()
-        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.gelu = nn.GELU()
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):

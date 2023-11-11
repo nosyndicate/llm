@@ -31,7 +31,7 @@ class RotaryEmbedding(nn.Module):
             "sin_cached", emb.sin()[None, None, :, :], persistent=False
         )
 
-    def forward(self, x: torch.Tensor, seq_len: int | None =None):
+    def forward(self, x: torch.Tensor, seq_len: int | None = None):
         """
         x should of size  [batch_size, num_attention_heads, seq_len, head_size]
         """
