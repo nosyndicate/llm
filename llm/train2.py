@@ -29,7 +29,7 @@ from torch.distributed import destroy_process_group, init_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from llm.config import GPTConfig
-from llm.utils import get_lr, DataLoader
+from llm.utils import get_lr, DataLoader, get_model
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -94,6 +94,7 @@ config = {k: globals()[k] for k in config_keys}  # will be useful for logging
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
+ddp_local_rank = None
 if ddp:
     init_process_group(backend=backend)
     ddp_rank = int(os.environ["RANK"])
@@ -155,89 +156,31 @@ if os.path.exists(meta_path):
     meta_vocab_size = meta["vocab_size"]
     print(f"found vocab_size = {meta_vocab_size} (inside {meta_path})")
 
-# model init
-model_args = dict(
+
+# Initialize model
+model, model_args, optimizer, scaler = get_model(
     n_layer=n_layer,
     n_head=n_head,
     n_embd=n_embd,
     block_size=block_size,
     bias=bias,
-    vocab_size=None,
     dropout=dropout,
     flash_attention=flash_attention,
     rms_norm=rms_norm,
-)  # start with model_args from command line
-
-if init_from == "scratch":
-    # init a new model from scratch
-    print("Initializing a new model from scratch")
-    # determine the vocab size we'll use for from-scratch training
-    if meta_vocab_size is None:
-        print(
-            "defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)"
-        )
-    model_args["vocab_size"] = meta_vocab_size if meta_vocab_size is not None else 50304
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
-elif init_from == "resume":
-    print(f"Resuming training from {out_dir}")
-    # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, "ckpt.pt")
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    checkpoint_model_args = checkpoint["model_args"]
-    # force these config attributes to be equal otherwise we can't even resume training
-    # the rest of the attributes (e.g. dropout) can stay as desired from command line
-    for k in ["n_layer", "n_head", "n_embd", "block_size", "bias", "vocab_size"]:
-        model_args[k] = checkpoint_model_args[k]
-    # create the model
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
-    state_dict = checkpoint["model"]
-    # fix the keys of the state dictionary :(
-    # honestly no idea how checkpoints sometimes get this prefix, have to debug more
-    unwanted_prefix = "_orig_mod."
-    for k, v in list(state_dict.items()):
-        if k.startswith(unwanted_prefix):
-            state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
-    iter_num = checkpoint["iter_num"]
-    best_val_loss = checkpoint["best_val_loss"]
-elif init_from.startswith("gpt2"):
-    print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-    # initialize from OpenAI GPT-2 weights
-    override_args = dict(dropout=dropout)
-    model = GPT.from_pretrained(init_from, override_args)
-    # read off the created config params, so we can store them into checkpoint correctly
-    for k in ["n_layer", "n_head", "n_embd", "block_size", "bias", "vocab_size"]:
-        model_args[k] = getattr(model.config, k)
-# crop down the model block size if desired, using model surgery
-if block_size < model.config.block_size:
-    model.crop_block_size(block_size)
-    model_args[
-        "block_size"
-    ] = block_size  # so that the checkpoint will have the right value
-model.to(device)
-
-# initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
-
-# optimizer
-optimizer = model.configure_optimizers(
-    weight_decay, learning_rate, (beta1, beta2), device_type
+    init_from=init_from,
+    meta_vocab_size=meta_vocab_size,
+    out_dir=out_dir,
+    device=device,
+    device_type=device_type,
+    dtype=dtype,
+    compile=compile,
+    ddp=ddp,
+    ddp_local_rank=ddp_local_rank,
+    weight_decay=weight_decay,
+    learning_rate=learning_rate,
+    beta1=beta1,
+    beta2=beta2,
 )
-if init_from == "resume":
-    optimizer.load_state_dict(checkpoint["optimizer"])
-checkpoint = None  # free up memory
-
-# compile the model, requires PyTorch 2.0
-if compile:
-    print("compiling the model... (takes a ~minute)")
-    unoptimized_model = model
-    model = torch.compile(model)  # type: ignore[arg-type, assignment]
-
-# wrap model into DDP container
-if ddp:
-    model = DDP(model, device_ids=[ddp_local_rank])
 
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
