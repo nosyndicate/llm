@@ -1,5 +1,7 @@
 from torch import Tensor, nn
 
+from llm.config import Llama2Config
+
 
 class SiLUActivation(nn.Module):
     """
@@ -21,17 +23,24 @@ class GLU(nn.Module):
     https://arxiv.org/pdf/2302.13971.pdf
 
     FFN(x, W, V, W_2) = (Activation(xW) * xV) * W_2
-    """
 
-    def __init__(
-        self,
-        hidden_size: int,
-        intermediate_size: int,
-    ):
+    The default value for intermediate_size is 2/3 * 4 * n_embd
+    - 2/3 come from the original llama paper. 
+        - because we have 3 layers instead of 2 in original FFN, so we should scale it by 2/3
+    - 4 comes from the old practice of original attention is all you need paper.
+    - n_embd is the embedding size.
+    """
+    def __init__(self, config: Llama2Config) -> None:
         super().__init__()
-        self.gate_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
-        self.down_proj = nn.Linear(intermediate_size, hidden_size, bias=False)
-        self.up_proj = nn.Linear(hidden_size, intermediate_size, bias=False)
+ 
+        if config.ffn_hidden is None:
+            ffn_hidden = int(2 * 4 * config.n_embd / 3)
+        else:
+            ffn_hidden = config.ffn_hidden
+
+        self.gate_proj = nn.Linear(config.n_embd, ffn_hidden, bias=False)
+        self.down_proj = nn.Linear(ffn_hidden, config.n_embd, bias=False)
+        self.up_proj = nn.Linear(config.n_embd, ffn_hidden, bias=False)
         self.act_fn = SiLUActivation()
 
     def forward(self, x):

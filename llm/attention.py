@@ -5,7 +5,8 @@ from flash_attn import flash_attn_func  # type:ignore[import-untyped]
 from torch import LongTensor, Tensor, nn
 from torch.nn import functional as F
 
-from llm.rotary_embedding import RotaryEmbedding, apply_rotary_pos_emb
+from llm.config import Llama2Config
+from llm.rotary_embedding import RopeEmbedding, apply_rotary_embedding
 
 
 class Attention(nn.Module):
@@ -18,73 +19,69 @@ class Attention(nn.Module):
     - otherwise, Grouped Query Attention (https://arxiv.org/pdf/2305.13245.pdf)
     """
 
-    def __init__(
-        self,
-        hidden_size: int,
-        num_heads: int,
-        num_key_value_heads: int,
-        attention_bias: bool = False,
-    ):
-        self.hidden_size = hidden_size
-        self.num_heads = num_heads
-        self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = num_key_value_heads
+    def __init__(self, config: Llama2Config) -> None:
+        super().__init__()
+        self.n_embd = config.n_embd
+        self.n_head = config.n_head
+        self.head_dim = self.n_embd // self.n_head
 
-        if (self.head_dim * self.num_heads) != self.hidden_size:
-            raise ValueError(
-                f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
-                f" and `num_heads`: {self.num_heads})."
-            )
+        # TODO, implement GQA later
+        self.q_proj = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+        self.k_proj = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
 
-        self.attention_bias = attention_bias
-        self.q_proj = nn.Linear(
-            self.hidden_size, self.num_heads * self.head_dim, bias=attention_bias
-        )
-        self.k_proj = nn.Linear(
-            self.hidden_size,
-            self.num_key_value_heads * self.head_dim,
-            bias=attention_bias,
-        )
-        self.v_proj = nn.Linear(
-            self.hidden_size,
-            self.num_key_value_heads * self.head_dim,
-            bias=attention_bias,
-        )
-        self.o_proj = nn.Linear(
-            self.num_heads * self.head_dim, self.hidden_size, bias=attention_bias
-        )
-        self.rotary_emb = RotaryEmbedding(self.head_dim)
+        self.o_proj = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
+
 
     def forward(
         self,
-        hidden_states: Tensor,
+        x: Tensor,
+        rope_cos: Tensor,
+        rope_sin: Tensor,
         position_ids: LongTensor | None = None,
     ):
-        batch_size, q_len, _ = hidden_states.size()
+        batch_size, seq_len, _ = x.size()
 
         # Project into multiple QKV subspaces
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
+
+        # (B, T, n_embd) -> (B, T, n_head * head_dim)
+        query_states = self.q_proj(x)
+        key_states = self.k_proj(x)
+        value_states = self.v_proj(x)
 
         # Split into multiple heads if necessary
+        # (B, T, n_head * head_dim) -> (B, num_head, T, head_dim)
         query_states = query_states.view(
-            batch_size, q_len, self.num_heads, self.head_dim
+            batch_size, seq_len, self.n_head, self.head_dim
         ).transpose(1, 2)
         key_states = key_states.view(
-            batch_size, q_len, self.num_key_value_heads, self.head_dim
+            batch_size, seq_len, self.n_head, self.head_dim
         ).transpose(1, 2)
         value_states = value_states.view(
-            batch_size, q_len, self.num_key_value_heads, self.head_dim
+            batch_size, seq_len, self.n_head, self.head_dim
         ).transpose(1, 2)
 
-        kv_seq_len = key_states.shape[-2]
 
         # Apply Rotary embedding
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(
-            query_states, key_states, cos, sin, position_ids
-        )
+        # according to https://github.com/jzhang38/TinyLlama/blob/10bef6a5e03aebd9263ddc00d138a7bc86973873/lit_gpt/model.py#L232C9-L232C61
+        # apply rope in fp32 significantly stablize training
+        query_states = apply_rotary_embedding(query_states, rope_cos, rope_sin)
+        key_states = apply_rotary_embedding(key_states, rope_cos, rope_sin)
+
+        y = self.scaled_dot_product_attention(query_states, key_states, value_states)  # (B, T, num_hed, head_dim)
+
+        y = y.reshape(batch_size, seq_len, self.n_embd)  # (B, T, n_embd)
+
+        # output projection
+        return self.o_proj(y)  # (B, T, n_embd)
+
+    def scaled_dot_product_attention(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+        # TODO should I implement by myself
+        y = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True
+        )  # (B, num_head, T, head_dim)
+        return y.transpose(1, 2)
+
 
 
 class CausalSelfAttention(nn.Module):

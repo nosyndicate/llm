@@ -1,11 +1,13 @@
 import math
 import os
-import torch
-import numpy as np
 
-from llm.config import GPTConfig
-from llm.model import GPT
+import numpy as np
+import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
+
+from llm.config import GPTConfig, Llama2Config
+from llm.llama2 import Llama2
+from llm.model import GPT
 
 
 def get_lr(
@@ -122,6 +124,15 @@ def get_model(
         )
         gptconf = GPTConfig(**model_args)
         model = GPT(gptconf)
+        # model = Llama2(Llama2Config(
+        #     seq_len=512,
+        #     vocab_size=65,
+        #     n_layer=6,
+        #     n_head=6,
+        #     n_embd=384,
+        #     ffn_hidden=None,
+        #     dropout=0.2,
+        # ))
     elif init_from == "resume":
         print(f"Resuming training from {out_dir}")
         # resume training from a checkpoint.
@@ -183,3 +194,6 @@ def get_model(
         model = DDP(model, device_ids=[ddp_local_rank])
 
     return model, model_args, optimizer, scaler
+
+
+
