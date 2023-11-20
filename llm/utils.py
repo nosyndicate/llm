@@ -231,6 +231,7 @@ def get_llama2(
         model_args = asdict(llama2_config)
 
         model = Llama2(llama2_config)
+        print("number of parameters: %.2fM" % (model.get_num_params() / 1e6,))
     elif init_from == "resume":
         raise NotImplementedError()
 

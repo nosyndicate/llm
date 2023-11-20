@@ -20,7 +20,9 @@ class Block(nn.Module):
         self.attention = Attention(config)
         self.ffn = GLU(config)
 
-    def forward(self, x: torch.Tensor, rope_cos: torch.Tensor, rope_sin: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, rope_cos: torch.Tensor, rope_sin: torch.Tensor
+    ) -> torch.Tensor:
         """
         Args:
             x: token embedding, (B, T, n_embd)
@@ -60,6 +62,8 @@ class Llama2(nn.Module):
         self.layers = nn.ModuleList()
         for _ in range(self.n_layer):
             self.layers.append(Block(config))
+
+        self.apply(self._init_weights)
 
     def forward(
         self, tokens: torch.Tensor, targets: torch.Tensor
@@ -104,6 +108,26 @@ class Llama2(nn.Module):
 
         return logits, loss
 
+    def _init_weights(self, module: nn.Module) -> None:
+        """
+        Initialize the weights. Use N(0, 0.02) from the first GPT paper.
+
+        TODO there is other papers on initialization
+        - 2.1.3 from GPT-NeoX-20B https://arxiv.org/pdf/2204.06745.pdf
+        - 2.3 from GPT2 Language Models are Unsupervised Multitask Learners
+        """
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    def get_num_params(self, non_embedding: bool = True) -> int:
+        n_params = sum(p.numel() for p in self.parameters())
+        if non_embedding:
+            n_params -= self.embedding.weight.numel()
+        return n_params
 
     def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
         """
