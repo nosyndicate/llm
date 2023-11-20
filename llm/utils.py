@@ -125,15 +125,6 @@ def get_model(
         )
         gptconf = GPTConfig(**model_args)
         model = GPT(gptconf)
-        # model = Llama2(Llama2Config(
-        #     seq_len=512,
-        #     vocab_size=65,
-        #     n_layer=6,
-        #     n_head=6,
-        #     n_embd=384,
-        #     ffn_hidden=None,
-        #     dropout=0.2,
-        # ))
     elif init_from == "resume":
         print(f"Resuming training from {out_dir}")
         # resume training from a checkpoint.
@@ -227,6 +218,7 @@ def get_llama2(
             print(
                 "defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)"
             )
+            meta_vocab_size = 50304
         llama2_config = Llama2Config(
             max_seq_len=max_seq_len,
             vocab_size=meta_vocab_size,
