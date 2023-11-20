@@ -6,7 +6,7 @@ from torch import LongTensor, Tensor, nn
 from torch.nn import functional as F
 
 from llm.config import Llama2Config
-from llm.rotary_embedding import RopeEmbedding, apply_rotary_embedding
+from llm.rotary_embedding import apply_rotary_embedding
 
 
 class Attention(nn.Module):

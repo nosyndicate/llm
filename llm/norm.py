@@ -7,20 +7,20 @@ class RMSNorm(nn.Module):
     """
     From https://browse.arxiv.org/pdf/1910.07467.pdf
 
-    output = input / rms(input) * weight
+    output = x / rms(x) * weight
     """
 
-    def __init__(self, ndim: int) -> None:
+    def __init__(self, n_embd: int) -> None:
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(ndim))
+        self.weight = nn.Parameter(torch.ones(n_embd))
         self.variance_epsilon = 1e-6
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        input_dtype = input.dtype
-        hidden_states = input.to(torch.float32)
-        variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
-        return self.weight * hidden_states.to(input_dtype)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        x = x.to(torch.float32)
+        variance = x.pow(2).mean(-1, keepdim=True)
+        hidden_states = x * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * x.to(input_dtype)
 
 
 class LayerNorm(nn.Module):

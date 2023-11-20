@@ -65,8 +65,10 @@ class Llama2(nn.Module):
         self, tokens: torch.Tensor, targets: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        tokens: [B, T]
-        target: [B, T]
+        tokens: The input tokens, of shape [B, T]
+        target: The prediction target of each token [B, T]
+
+        target should be a shift of tokens.
         """
         # TODO Need to validate the comment here to make sure the size matches
         device = tokens.device
