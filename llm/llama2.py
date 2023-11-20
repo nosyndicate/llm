@@ -1,13 +1,14 @@
+import inspect
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import inspect
 
 from llm.attention import Attention
 from llm.config import Llama2Config
 from llm.mlp import GLU
 from llm.norm import RMSNorm
-from llm.rotary_embedding import RopeEmbedding, build_rope_cache
+from llm.rotary_embedding import build_rope
 
 
 class Block(nn.Module):
@@ -39,7 +40,7 @@ class Block(nn.Module):
 class Llama2(nn.Module):
     def __init__(self, config: Llama2Config) -> None:
         super().__init__()
-        self.max_seq_len = config.seq_len
+        self.max_seq_len = config.max_seq_len
 
         self.n_layer = config.n_layer
         self.embedding = nn.Embedding(config.vocab_size, config.n_embd)
@@ -47,8 +48,14 @@ class Llama2(nn.Module):
         self.norm = RMSNorm(config.n_embd)
         self.n_embd = config.n_embd
         self.n_head = config.n_head
-        self.rope_cos: torch.Tensor | None = None
-        self.rope_sin: torch.Tensor | None = None
+
+        cos, sin = build_rope(
+            base=10000, d=(self.n_embd // self.n_head), max_seq_len=self.max_seq_len
+        )
+        # Register buffer there so rotary embedding can move along with
+        # other parameters to different devices with `.to(device)`
+        self.register_buffer("rope_cos", cos, persistent=False)
+        self.register_buffer("rope_sin", sin, persistent=False)
 
         self.layers = nn.ModuleList()
         for _ in range(self.n_layer):
@@ -64,16 +71,7 @@ class Llama2(nn.Module):
         # TODO Need to validate the comment here to make sure the size matches
         device = tokens.device
         b, t = tokens.shape
-
-        # Buiild the rope cache here so we know which device it should be
-        # here d should be the size of each head
-        # Need to consider register_buffer for rope_sin and rope_cos
-        if self.rope_sin is None and self.rope_cos is None:
-            self.rope_cos, self.rope_sin = build_rope_cache(
-                base=10000, d=(self.n_embd // self.n_head), max_seq_len=self.max_seq_len, device=device
-            )
-
-        assert t < self.max_seq_len, "Sequence is too long"
+        assert t <= self.max_seq_len, "Sequence is too long"
 
         # Create the position for each token, do
         position_idx = torch.arange(0, t, dtype=torch.long, device=device)
@@ -105,8 +103,10 @@ class Llama2(nn.Module):
         return logits, loss
 
 
-    # TODO Following functions borrowed from nanogpt, still need to rewrite or refactor
     def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        """
+        TODO Following functions borrowed from nanogpt, still need to rewrite or refactor
+        """
         # start with all of the candidate parameters
         param_dict = {pn: p for pn, p in self.named_parameters()}
         # filter out those that do not require grad

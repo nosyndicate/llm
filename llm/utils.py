@@ -1,5 +1,6 @@
 import math
 import os
+from dataclasses import asdict
 
 import numpy as np
 import torch
@@ -196,4 +197,72 @@ def get_model(
     return model, model_args, optimizer, scaler
 
 
+def get_llama2(
+    n_layer: int,
+    n_head: int,
+    n_embd: int,
+    max_seq_len: int,
+    bias: bool,
+    dropout: float,
+    flash_attention: bool,
+    init_from,
+    meta_vocab_size,
+    out_dir,
+    device,
+    device_type,
+    dtype,
+    compile,
+    ddp,
+    ddp_local_rank,
+    weight_decay,
+    learning_rate,
+    beta1,
+    beta2,
+):
+    if init_from == "scratch":
+        # init a new model from scratch
+        print("Initializing a new model from scratch")
+        # determine the vocab size we'll use for from-scratch training
+        if meta_vocab_size is None:
+            print(
+                "defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)"
+            )
+        llama2_config = Llama2Config(
+            max_seq_len=max_seq_len,
+            vocab_size=meta_vocab_size,
+            n_layer=n_layer,
+            n_head=n_head,
+            n_embd=n_embd,
+            ffn_hidden=None,
+            dropout=dropout,
+        )
+        model_args = asdict(llama2_config)
 
+        model = Llama2(llama2_config)
+    elif init_from == "resume":
+        raise NotImplementedError()
+
+    model.to(device)
+
+    # initialize a GradScaler. If enabled=False scaler is a no-op
+    scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
+
+    # optimizer
+    optimizer = model.configure_optimizers(
+        weight_decay, learning_rate, (beta1, beta2), device_type
+    )
+    if init_from == "resume":
+        pass
+    checkpoint = None  # free up memory
+
+    # compile the model, requires PyTorch 2.0
+    if compile:
+        print("compiling the model... (takes a ~minute)")
+        unoptimized_model = model
+        model = torch.compile(model)  # type: ignore[arg-type, assignment]
+
+    # wrap model into DDP container
+    if ddp:
+        model = DDP(model, device_ids=[ddp_local_rank])
+
+    return model, model_args, optimizer, scaler

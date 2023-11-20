@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Any, Literal, Mapping, TypeAlias
 
 NormOption: TypeAlias = Literal["layernorm", "rmsnorm"]
 NormPlacementOption: TypeAlias = Literal["prenorm", "postnorm", "gpt2norm", "deepnorm"]
@@ -68,9 +68,10 @@ class GPTConfig:
     flash_attention: bool = False
     rms_norm: bool = False
 
+
 @dataclass
 class Llama2Config:
-    seq_len: int = 1024
+    max_seq_len: int = 1024
     vocab_size: int = 50304  # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
     n_layer: int = 12
     n_head: int = 12
@@ -79,4 +80,3 @@ class Llama2Config:
     dropout: float = 0.0
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     flash_attention: bool = False
-    rms_norm: bool = False

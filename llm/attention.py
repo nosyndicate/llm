@@ -24,6 +24,7 @@ class Attention(nn.Module):
         self.n_embd = config.n_embd
         self.n_head = config.n_head
         self.head_dim = self.n_embd // self.n_head
+        self.dropout = config.dropout
 
         # TODO, implement GQA later
         self.q_proj = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
@@ -31,7 +32,6 @@ class Attention(nn.Module):
         self.v_proj = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
 
         self.o_proj = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)
-
 
     def forward(
         self,
@@ -61,14 +61,15 @@ class Attention(nn.Module):
             batch_size, seq_len, self.n_head, self.head_dim
         ).transpose(1, 2)
 
-
         # Apply Rotary embedding
         # according to https://github.com/jzhang38/TinyLlama/blob/10bef6a5e03aebd9263ddc00d138a7bc86973873/lit_gpt/model.py#L232C9-L232C61
         # apply rope in fp32 significantly stablize training
         query_states = apply_rotary_embedding(query_states, rope_cos, rope_sin)
         key_states = apply_rotary_embedding(key_states, rope_cos, rope_sin)
 
-        y = self.scaled_dot_product_attention(query_states, key_states, value_states)  # (B, T, num_hed, head_dim)
+        y = self.scaled_dot_product_attention(
+            query_states, key_states, value_states
+        )  # (B, T, num_hed, head_dim)
 
         y = y.reshape(batch_size, seq_len, self.n_embd)  # (B, T, n_embd)
 
@@ -78,10 +79,14 @@ class Attention(nn.Module):
     def scaled_dot_product_attention(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
         # TODO should I implement by myself
         y = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=None, dropout_p=0.0, is_causal=True
+            q,
+            k,
+            v,
+            attn_mask=None,
+            dropout_p=self.dropout if self.training else 0.0,
+            is_causal=True,
         )  # (B, num_head, T, head_dim)
         return y.transpose(1, 2)
-
 
 
 class CausalSelfAttention(nn.Module):

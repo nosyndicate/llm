@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 
-
 # class RotaryEmbedding(nn.Module):
 #     def __init__(
 #         self,
@@ -87,9 +86,7 @@ from torch import nn
 RopeEmbedding = tuple[torch.Tensor, torch.Tensor]
 
 
-def build_rope_cache(
-    base: int, d: int, max_seq_len: int, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor]:
+def build_rope(base: int, d: int, max_seq_len: int, ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Build the rotary embedding.
 
@@ -98,21 +95,23 @@ def build_rope_cache(
 
 
     Args:
-        base (int): The base used to compute theta
-        d (int): The number of dimensions of a token's embedding
-        seq_len (int): Max sequence length, we will create the position embedding for each position
+        base: The base used to compute theta
+        d : The number of dimensions of a token's embedding
+        max_seq_len: Max sequence length, we will create the position embedding for each position
 
     Returns:
-        return_type: Description of the return value.
+        cos: Cosine part of the position embedding 
+        sin: Sine part of the position embedding
 
     """
     # Compute theta, this theta is universal for all positions
-    theta = 1.0 / (base ** (torch.arange(0, d, 2).float() / d)).to(device)
+    theta = 1.0 / (base ** (torch.arange(0, d, 2).float() / d))
 
     # Create position indexes `[0, 1, ..., max_seq_len - 1]`
-    seq_idx = torch.arange(max_seq_len, device=device)
+    seq_idx = torch.arange(max_seq_len)
 
     # Compute m\theta_i in the original paper, this determines the angles of rotation for each position
+    # TODO idx_theta and idx_theta can use a better name
     idx_theta = torch.einsum("n,d->nd", seq_idx, theta)
     idx_theta2 = torch.cat((idx_theta, idx_theta), dim=-1)
 
@@ -151,9 +150,9 @@ def apply_rotary_embedding(
     Apply the Rotary Embedding to the query or key of the tokens.
 
     Args:
-        tok_embedding (torch.Tensor): Query projection or key project of the tokens, of shape [B, n_head, T, head_dim]
-        cos (torch.Tensor): (T, head_dim)
-        sin (torch.Tensor): (T, head_dim)
+        tok_embedding: Query projection or key project of the tokens, of shape [B, n_head, T, head_dim]
+        cos: (T, head_dim)
+        sin: (T, head_dim)
     """
 
     roped = (tok_embedding * cos) + (rotate_half(tok_embedding) * sin)
