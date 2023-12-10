@@ -31,6 +31,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from llm.config import GPTConfig
 from llm.utils import get_lr, DataLoader, get_model, get_llama2
 
+
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
@@ -158,38 +159,15 @@ if os.path.exists(meta_path):
 
 
 # Initialize model
-# model, model_args, optimizer, scaler = get_model(
-#     n_layer=n_layer,
-#     n_head=n_head,
-#     n_embd=n_embd,
-#     block_size=block_size,
-#     bias=bias,
-#     dropout=dropout,
-#     flash_attention=flash_attention,
-#     rms_norm=rms_norm,
-#     init_from=init_from,
-#     meta_vocab_size=meta_vocab_size,
-#     out_dir=out_dir,
-#     device=device,
-#     device_type=device_type,
-#     dtype=dtype,
-#     compile=compile,
-#     ddp=ddp,
-#     ddp_local_rank=ddp_local_rank,
-#     weight_decay=weight_decay,
-#     learning_rate=learning_rate,
-#     beta1=beta1,
-#     beta2=beta2,
-# )
-
-model, model_args, optimizer, scaler = get_llama2(
+model, model_args, optimizer, scaler = get_model(
     n_layer=n_layer,
     n_head=n_head,
     n_embd=n_embd,
-    max_seq_len=block_size,
+    block_size=block_size,
     bias=bias,
     dropout=dropout,
     flash_attention=flash_attention,
+    rms_norm=rms_norm,
     init_from=init_from,
     meta_vocab_size=meta_vocab_size,
     out_dir=out_dir,
@@ -204,6 +182,29 @@ model, model_args, optimizer, scaler = get_llama2(
     beta1=beta1,
     beta2=beta2,
 )
+
+# model, model_args, optimizer, scaler = get_llama2(
+#     n_layer=n_layer,
+#     n_head=n_head,
+#     n_embd=n_embd,
+#     max_seq_len=block_size,
+#     bias=bias,
+#     dropout=dropout,
+#     flash_attention=flash_attention,
+#     init_from=init_from,
+#     meta_vocab_size=meta_vocab_size,
+#     out_dir=out_dir,
+#     device=device,
+#     device_type=device_type,
+#     dtype=dtype,
+#     compile=compile,
+#     ddp=ddp,
+#     ddp_local_rank=ddp_local_rank,
+#     weight_decay=weight_decay,
+#     learning_rate=learning_rate,
+#     beta1=beta1,
+#     beta2=beta2,
+# )
 
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
